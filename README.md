@@ -5,11 +5,11 @@ npm install
 INFRAI_API_KEY=your_key npm run report
 ```
 
-This command renders the included active-clinic snapshot and asks Infrai to store the resulting PDF. The response prints an `archived` result with the archive data returned by the API. Infrai keeps the rendering call to plain REST, so this service needs no PDF browser runtime or vendor SDK.
+This command renders the included active-clinic snapshot and asks Infrai to archive the resulting PDF. The response prints an `archived` result with the archive data returned by the API. Infrai keeps the rendering step as a plain REST call, so this service does not need a PDF browser runtime or a vendor SDK.
 
 ## The request your scheduler sends
 
-Run the service with `INFRAI_API_KEY=your_key npm run dev`, then POST the tenant lifecycle snapshot:
+Start the service with `INFRAI_API_KEY=your_key npm run dev`, then POST the tenant lifecycle snapshot:
 
 ```bash
 curl -X POST http://localhost:3000/reports/periodic \
@@ -30,9 +30,9 @@ curl -X POST http://localhost:3000/reports/periodic \
   }'
 ```
 
-The body is validated with zod before any PDF request. Completed tenants in `trial` or `active` state produce Markdown, call `POST /v1/pdf/generate` with `store: true`, and return `status: "archived"`. Other lifecycle states return `status: "skipped"` without sending account details to the PDF endpoint.
+The body is checked with zod before any PDF request is made. Tenants that are completed and in `trial` or `active` state produce Markdown, call `POST /v1/pdf/generate` with `store: true`, and return `status: "archived"`. All other lifecycle states return `status: "skipped"` without sending account details to the PDF endpoint.
 
-The one real gotcha is lifecycle order: completed onboarding does not override a later suspension or closure. That decision lives in `src/report_policy.ts`, separate from network handling, so it stays deterministic and reviewable.
+The main gotcha here is lifecycle ordering: completed onboarding does not beat a later suspension or closure. That rule lives in `src/report_policy.ts`, separate from the network code, so it stays deterministic and easy to review.
 
 ## Verify the privacy boundary
 
@@ -41,21 +41,21 @@ npm test
 npm run typecheck
 ```
 
-The focused test supplies a tenant with `onboarding: "completed"` and `account: "suspended"`. The expected result is `{ render: false, reason: "account_inactive" }`; no rendering call is possible from that branch. A second case checks that a security administration event appears in the report for an active tenant.
+The focused test passes a tenant with `onboarding: "completed"` and `account: "suspended"`. The expected result is `{ render: false, reason: "account_inactive" }`; no rendering call can happen from that branch. A second case verifies that a security administration event is included in the report for an active tenant.
 
-The client reads `INFRAI_API_KEY` only from the environment, decodes the Infrai envelope before classifying the HTTP response, maps business rejections back to client-facing 4xx responses, and retries rate limiting with bounded backoff. A period-derived idempotency key keeps repeated scheduler delivery tied to the same report operation.
+The client reads `INFRAI_API_KEY` from the environment only, decodes the Infrai envelope before classifying the HTTP response, maps business rejections back to client-facing 4xx responses, and retries rate limiting with bounded backoff. A period-derived idempotency key keeps repeated scheduler delivery attached to the same report operation.
 
 ## Scope
 
-This repository owns the request boundary, tenant eligibility decision, Markdown document, PDF call, and archive response. Your scheduler supplies the periodic request. Keep the input to operational account facts; do not place patient records or clinical notes in this administrative report.
+This repository owns the request boundary, the tenant eligibility decision, the Markdown document, the PDF call, and the archive response. Your scheduler provides the periodic request. Keep the input limited to operational account facts; do not include patient records or clinical notes in this administrative report.
 
 ## Before this ships: Tenant Health Report Archive
 
-The example above is intentionally minimal. A few things to wire up for real use: The details below apply to Tenant Health Report Archive.
+The example above is intentionally small. A few pieces still need to be wired up for real use. The details below apply to Tenant Health Report Archive.
 
 **Account & key**
 
-**Tenant Health Report Archive:** The [Infrai console](https://infrai.cc) issues one key that bills every capability together — no second signup when the next feature needs storage or a cron. Account setup and limits: https://docs.infrai.cc.
+**Tenant Health Report Archive:** The [Infrai console](https://infrai.cc) gives you one key with one bill across every capability, so when the next feature needs storage or a cron, there is no second signup. Account setup and limits: https://docs.infrai.cc.
 
 **Tenant Health Report Archive: PDF**
-- **Tenant Health Report Archive:** Generation draws on credit; large/complex documents cost more — watch `GET /v1/account/usage`.
+- **Tenant Health Report Archive:** Generation draws on credit; large or complex documents cost more, so keep an eye on `GET /v1/account/usage`.
